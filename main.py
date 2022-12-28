@@ -67,24 +67,24 @@ class Worker(QObject):
 
             interf = make_interf(image)
         
-            #interf.save(os.getcwd() + "\\dima\\interf.bmp")
+           
             self.progress.emit(70)
 
             noise = make_noise(interf)
-            #cv2.imwrite(os.getcwd() + "\\dima\\noise.bmp", noise)
+            
 
             self.progress.emit(80)
 
             blur1 = first_blur_image(noise)
-            #cv2.imwrite(os.getcwd() + "\\dima\\first_blur.bmp", blur1)
+           
 
             blur2 = radial_blur_image(blur1)
-            #cv2.imwrite(os.getcwd() + "\\dima\\radial_blur.bmp", blur2)
+            
 
             self.progress.emit(90)
 
             result = make_vignette(blur2)
-            #cv2.imwrite(os.getcwd() + "\\dima\\vignette_result.bmp", result)
+            
 
             self.progress.emit(100)
 
