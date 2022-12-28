@@ -1,9 +1,10 @@
-#  Copyright (c) 2021., Illia Popov, All rights reserved.
+#  Copyright (c) 2021 Illia Popov - All rights reserved.
 
 from PIL import Image
+import warnings
 import os
 from PySide2.QtCore import QSettings
-from pathlib import Path
+import PySide2 as PS
 from PySide2.QtCore import QObject, QThread, Signal, Slot
 #os.popen("pyside2-uic linnik_ui.ui -o linnik_ui.py")
 import math
@@ -15,7 +16,7 @@ import random
 import cv2
 from PySide2.QtWidgets import QSpinBox, QDoubleSpinBox
 from PySide2 import QtWidgets, QtGui
-from PySide2.QtWidgets import QFileDialog
+from PySide2.QtWidgets import QFileDialog, QDesktopWidget
 from linnik_ui import Ui_MainWindow
 from processingImageParameters_ui import Ui_Form
 from defect_section_1_ui import Ui_Form as section_1_Ui_Form
@@ -65,20 +66,29 @@ class Worker(QObject):
             image = create_image(X_SIZE, Y_SIZE)
 
             interf = make_interf(image)
+        
+            #interf.save(os.getcwd() + "\\dima\\interf.bmp")
             self.progress.emit(70)
 
             noise = make_noise(interf)
+            #cv2.imwrite(os.getcwd() + "\\dima\\noise.bmp", noise)
+
             self.progress.emit(80)
 
             blur1 = first_blur_image(noise)
+            #cv2.imwrite(os.getcwd() + "\\dima\\first_blur.bmp", blur1)
+
             blur2 = radial_blur_image(blur1)
+            #cv2.imwrite(os.getcwd() + "\\dima\\radial_blur.bmp", blur2)
+
             self.progress.emit(90)
 
             result = make_vignette(blur2)
+            #cv2.imwrite(os.getcwd() + "\\dima\\vignette_result.bmp", result)
+
             self.progress.emit(100)
 
 
-            #cv2.imwrite("result.bmp", result)
             cv2.imwrite(self.resultName, result)
 
             try:
@@ -149,7 +159,7 @@ class section_2_Interface(QtWidgets.QWidget, section_2_Ui_Form):
 
 class section_3_Interface(QtWidgets.QWidget, section_3_Ui_Form):
     """
-    Subclassing QWidget to define a custom widget which is used to enter parameters to create parabola defect
+    Subclassing QWidget to define a custom widget which is used to enter parameters to create pow defect
     """
 
     def __init__(self):
@@ -165,8 +175,8 @@ class section_3_Interface(QtWidgets.QWidget, section_3_Ui_Form):
         mwSection_3_window.hide()
 
     def create_defect(self):
-        MATRIX_CREATOR.making_parabola(self.parabola_a_edit.value(), self.parabola_b_edit.value(),
-                                       self.parabola_c_edit.value(), self.height_edit.value(), self.width_edit.value())
+        MATRIX_CREATOR.making_pow(self.parabola_x_edit.value(), self.parabola_y_edit.value(),
+                                       self.parabola_stretching_edit.value(), self.parabola_pow_edit.value(), self.height_edit.value(), self.width_edit.value())
         self.show_graph_button.setEnabled(True)
 
     def show_graph(self):
@@ -326,6 +336,7 @@ class Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         resultName,_ = QFileDialog.getSaveFileName(None, "Save", "", filter)
         print(resultName)
 
+        self.thread = QThread()
         self.worker = Worker(resultName)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
@@ -334,6 +345,7 @@ class Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
         self.worker.finished.connect(self.on_finish)
         self.worker.progress.connect(self.on_progress)
+        self.thread.start()
         self.createButton.setEnabled(False)
         self.graphButton.setEnabled(False)
 
@@ -662,27 +674,37 @@ def makeData():
     Smoothing the surface with bicubic spline
     :return: surface points
     """
-    X = np.linspace(0, X_SIZE, 60)
-    Y = np.linspace(0, Y_SIZE, 60)
+    settings = QSettings("main_parameters.ini", QSettings.IniFormat)
+
+    noise_min = float(settings.value("noise_min"))
+    noise_max = float(settings.value("noise_max"))
+    smooth = float(settings.value("smooth"))
+    matrix_size = int(settings.value("start_matrix_size"))
+
+
+
+
+    X = np.linspace(0, X_SIZE, matrix_size)
+    Y = np.linspace(0, Y_SIZE, matrix_size)
 
     x, y = np.meshgrid(X, Y)
 
     try:
         fr = open(DEFECT_NAME, "r")
-        zlist = [list(map(float, fr.readline().split())) for i in range(0, 60)]
+        zlist = [list(map(float, fr.readline().split())) for i in range(0, matrix_size)]
         fr.close()
     except Exception as e:
         print(e)
 
 
     #Add surface noise
-    for i in range(60):
-        for j in range(60):
-            zlist[i][j] += random.gauss(0, 0.05)
+    for i in range(matrix_size):
+        for j in range(matrix_size):
+            zlist[i][j] += random.gauss(noise_min, noise_max)
 
     z = np.array(zlist)
 
-    f = interpolate.RectBivariateSpline(X, Y, z, kx=3, ky=3, s=10)
+    f = interpolate.RectBivariateSpline(X, Y, z, kx=3, ky=3, s=smooth)
 
     Xspline = np.linspace(0, X_SIZE, X_SIZE)
     Yspline = np.linspace(0, Y_SIZE, Y_SIZE)
@@ -699,8 +721,10 @@ def angle_between_vectors(x1, y1, z1, x2, y2, z2):
     Count angle between 2 vectors
     :return: Angle
     """
-    ang = abs(x1 * x2 + y1 * y2 + z1 * z2) / (
-                math.sqrt(x1 * x1 + y1 * y1 + z1 * z1) * math.sqrt(x2 * x2 + y2 * y2 + z2 * z2))
+    #print(str(x1) + " " + str(y1) + " " + str(z1))
+    tt = math.sqrt(x1 * x1 + y1 * y1 + z1 * z1) * math.sqrt(x2 * x2 + y2 * y2 + z2 * z2)
+    #print(tt)
+    ang = abs(x1 * x2 + y1 * y2 + z1 * z2) / tt
     return (ang)
 
 
@@ -723,7 +747,7 @@ def make_spline():
 
     file_angels = open("angles.txt", 'w')
     normals = make_normals_new(z)
-    angl = list()
+    #angl = list()
     for yy in range(0, Y_SIZE, 1):
         for xx in range(0, X_SIZE, 1):
 
@@ -820,6 +844,8 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     qtmodern.styles.dark(app)
 
+    #warnings.simplefilter("ignore")
+
     app.setWindowIcon(QtGui.QIcon("logo_png.png"))
 
     parameters = parametersInterface()
@@ -831,6 +857,7 @@ if __name__ == '__main__':
     section_5_window = section_5_Interface()
     section_6_window = section_6_Interface()
 
+    mwMain = qtmodern.windows.ModernWindow(interface)
     mwParameters = qtmodern.windows.ModernWindow(parameters)
     mwSection_1_window = qtmodern.windows.ModernWindow(section_1_window)
     mwSection_2_window = qtmodern.windows.ModernWindow(section_2_window)
@@ -839,7 +866,7 @@ if __name__ == '__main__':
     mwSection_5_window = qtmodern.windows.ModernWindow(section_5_window)
     mwSection_6_window = qtmodern.windows.ModernWindow(section_6_window)
 
-
+    mwMain.btnMaximize.setEnabled(False)
     mwParameters.btnMaximize.setEnabled(False)
     mwSection_1_window.btnMaximize.setEnabled(False)
     mwSection_2_window.btnMaximize.setEnabled(False)
@@ -849,6 +876,75 @@ if __name__ == '__main__':
     mwSection_6_window.btnMaximize.setEnabled(False)
 
 
+    ###place in center
+    mwMain.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwMain.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwParameters.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwParameters.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_1_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_1_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_2_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_2_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_3_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_3_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_4_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_4_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_5_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_5_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    mwSection_6_window.setGeometry(
+        QtWidgets.QStyle.alignedRect(
+            PS.QtCore.Qt.LeftToRight,
+            PS.QtCore.Qt.AlignCenter,
+            mwSection_6_window.size(),
+            QtGui.QGuiApplication.primaryScreen().availableGeometry(),
+        )
+    )
+    ###
 
+
+    mwMain.show()
+    mwMain.setFixedSize(mwMain.size())
 
     sys.exit(app.exec_())

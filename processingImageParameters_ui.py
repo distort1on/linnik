@@ -190,10 +190,10 @@ class Ui_Form(object):
     # setupUi
 
     def retranslateUi(self, Form):
-        Form.setWindowTitle(QCoreApplication.translate("Form", u"Parameters", None))
+        Form.setWindowTitle(QCoreApplication.translate("Form", u"Effects Parameters", None))
         self.label_3.setText(QCoreApplication.translate("Form", u"NOISE", None))
 #if QT_CONFIG(tooltip)
-        self.label_2.setToolTip(QCoreApplication.translate("Form", u"Mean", None))
+        self.label_2.setToolTip(QCoreApplication.translate("Form", u"Average value", None))
 #endif // QT_CONFIG(tooltip)
         self.label_2.setText(QCoreApplication.translate("Form", u"Mu:", None))
 #if QT_CONFIG(tooltip)
